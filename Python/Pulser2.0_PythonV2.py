@@ -15,7 +15,7 @@ adc_voltage_ref = 1.1
 #############################################################################
 ##########################-OPTIONS-##########################################
 #Debug
-debug = True
+debug = False
 
 #Thresholds
 threshDCs = 220
@@ -54,7 +54,7 @@ elif selected_board == padStrip_choices[1]:
     df.fillna(not_in_map_str, inplace=True)
     if debug:
         print(df.head())
-    save_prefix = 'P1_Strip_'
+    save_prefix = 'P2_Strip_'
 
 elif selected_board == padStrip_choices[2]:
     not_in_map_str = 'NONE'
