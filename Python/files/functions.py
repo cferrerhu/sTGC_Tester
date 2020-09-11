@@ -5,7 +5,7 @@ import glob
 
 class channel():
 
-    def __init__(self, info, reversed_x=True):
+    def __init__(self, info, ADC_ref=1.1, reversed_x=True):
         self.multiplexer = info[0]
 
         if info[0]=='A':
@@ -40,8 +40,8 @@ class channel():
         self.name = info[6]
 
 
-        self.resistance = 200
-        self.ADC_REF = 1.1
+        self.resistance = 470
+        self.ADC_REF = ADC_ref
         self.ADC_DC = 0
         self.ADC_AC = 0
         self.currentDC = 0
@@ -67,9 +67,13 @@ class channel():
 
     def update(self):
         format_str = '{0:.3g}'
-        self.summary = [self.multiplexer, self.port, self.pin, self.ADC_DC, format_str.format(self.voltageDC), format_str.format(self.currentDC), self.ADC_AC, format_str.format(self.voltageAC), format_str.format(self.currentAC), self.name, self.pad_map]
+        self.summary = [self.multiplexer, self.port, self.pin, self.ADC_DC, format_str.format(self.voltageDC), format_str.format(self.currentDC), self.ADC_AC, format_str.format(self.voltageAC), self.gfz, self.name, self.pad_map]
         for i in self.messages:
             self.summary.append(i)
+
+
+    def mult_list(self):
+        return [self.multiplexer, str(self.port), str(self.pin)]
 
 
 
@@ -126,6 +130,7 @@ def grounds(list):
     new = channel(['G', '2', '0', 'G0', '4', '6', 'GND'])
     for ch in list:
         if ch.gfz == 'G0':
+            ch.pad_map = 'GND'
             new = ch
 
         elif 'G' in ch.gfz:
@@ -145,9 +150,11 @@ def grounds(list):
 
             ch.connection = new.connection
             ch.cc = new.cc
-            ch.errors = new.errors
+            #ch.errors = new.errors
             ch.summary = new.summary
             ch.messages = new.messages
+
+            ch.pad_map = 'GND'
 
             ch.update()
 
@@ -196,3 +203,52 @@ def escexcell(info,fila,hoja,offset,color):
     for i in range(len(info)):
         hoja.write(fila,i+offset, info[i],color)
 
+def calculate_RS_drop(Req, V=4.9, Rs=470, ADC_ref=1.1):
+    # Calculates the expected ADC code [0,1023] based on an equivalent resistance
+    I = V/Req
+    V_ADC = Rs*I
+    ADC_code = 1024*V_ADC/ADC_ref
+    return int(ADC_code)
+
+def calculate_ADC_code(Rc, V, Rp=9530, Rs=470, ADC_ref=1.1):
+    #Calculates the expected ADC code [0,1023] based on an short circuit resistance
+    Req = ((Rc+Rp)*Rp+Rs*(Rc+2*Rp))/(Rc+2*Rp)
+    I = V/Req
+    V_ADC = Rs*I
+    ADC_code = 1024*V_ADC/ADC_ref
+    return int(ADC_code)
+
+
+def calculate_PCA_Voltage(ADC_code, Rp=9530, Rs=470, ADC_ref=1.1):
+    #Calculates the expected Voltage at the output of a PCA9698 based on an adc reading
+    Req = Rp + Rs
+    V_ADC = (ADC_code * ADC_ref)/1024
+    I = V_ADC / Rs
+    V = Req * I
+    return V
+
+
+def calculate_equivalent_resistance(ADC_code, V, Rp=9530, Rs=470, ADC_ref=1.1):
+    V_ADC = (ADC_code * ADC_ref)/1024
+    I = V_ADC / Rs
+    Req =  V / I
+
+    Rc = (2*Req*Rp - Rp*Rp - 2*Rs*Rp) / (Rp + Rs - Req)
+
+    if Rc < 0:
+        Rc = 10000000000000
+    return int(Rc)
+
+def correlated_pins(chns, errors):
+    err_lst = []
+    for ch in chns:
+        for err in errors:
+            if ch.mult_list() == err:
+                err_lst.append([ch.pad_map, ch.name])
+                pass
+    return err_lst
+
+
+
+if __name__ == "__main__":
+    pass

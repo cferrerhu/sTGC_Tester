@@ -7,22 +7,27 @@ import xlsxwriter
 import sys
 import pandas as pd
 from easygui import choicebox, ccbox
+import numpy as np
 
-from files.functions import channel, mensaje, check, grounds, serial_ports, portIsUsable, escexcell
+from files.functions import channel, mensaje, check, grounds, serial_ports, portIsUsable, escexcell, calculate_PCA_Voltage, calculate_ADC_code, calculate_RS_drop, correlated_pins
 
 
-adc_voltage_ref = 1.1
+
 #############################################################################
 ##########################-OPTIONS-##########################################
 #Debug
 debug = False
 
+#Minimum short circuit resistance, only needed if use_resistance=True
+SC_upper_res = 100000
+use_resistance = False
+
 #Thresholds
 threshDCs = 220
 threshDCi = 190
 
-threshACs = 100
-threshACi = 30
+threshACs = 400
+threshACi = 80
 
 #Serial Communication
 portName = ''
@@ -30,6 +35,15 @@ bps = 57600
 
 #Print info to CSV
 print_CSV = False
+
+
+
+#Advanced options
+debug2 = False
+adc_voltage_ref = 1.1
+
+
+
 
 ## Load PAD information and mapping
 padStrip_choices = ["P1 Strip", "P2 Strip", "Pad"]
@@ -41,7 +55,7 @@ if selected_board == padStrip_choices[0]:
     df.drop('GFZ Connector', axis=1, inplace=True)
     df.set_index('GFZ_NAME', drop=True, inplace=True)
     df.fillna(not_in_map_str, inplace=True)
-    if debug:
+    if debug2:
         print(df.head())
 
     save_prefix = 'P1_Strip_'
@@ -52,7 +66,7 @@ elif selected_board == padStrip_choices[1]:
     df.drop('GFZ Connector', axis=1, inplace=True)
     df.set_index('GFZ_NAME', drop=True, inplace=True)
     df.fillna(not_in_map_str, inplace=True)
-    if debug:
+    if debug2:
         print(df.head())
     save_prefix = 'P2_Strip_'
 
@@ -61,7 +75,7 @@ elif selected_board == padStrip_choices[2]:
     df = pd.read_csv("files/sTGC_AB_Mapping_Pad.csv")
     df.set_index('GFZ_NAME', drop=True, inplace=True)
     df.fillna(not_in_map_str, inplace=True)
-    if debug:
+    if debug2:
         print(df.head())
     save_prefix = 'Pad_'
 
@@ -77,7 +91,6 @@ else:  # user chose Cancel
     sys.exit(0)
 
 
-
 if len(portName) < 3:
     ports = serial_ports()
     portName = choicebox('COM port not selected, please select the right port.', 'COM port Selector', ports)
@@ -91,9 +104,9 @@ with open('files/Maping.csv') as csv_file:
     numero = -1
     channels = []
     for row in csv_reader:
-        if debug:
+        if debug2:
             print(row)
-        channels.append(channel(row))
+        channels.append(channel(row, ADC_ref=adc_voltage_ref))
 
 
 
@@ -110,6 +123,13 @@ for channel in channels:
 
 
 
+
+
+
+
+AC_cal_val = []
+DC_cal_val = []
+estimated_source_V = 0
 
 ## Commands [Start,ID,Letter,Port,Number,Comand,Stop]
 ##Send
@@ -131,7 +151,7 @@ if portIsUsable(portName):
         print('DEBUG MODE ON')
 
     arduino.timeout = 5
-    time.sleep(5)
+    time.sleep(2)
 
     ##Start comunication
     arduino.write('#'.encode('utf-8'))
@@ -144,11 +164,46 @@ if portIsUsable(portName):
             print(msj.decode('utf-8'))
 
 
+
+    # Start Voltage sensing Test
+    if debug:
+        print('Measuring PCA voltage')
+    arduino.write(('#P'+'O'+'$').encode('utf-8'))   # Turn off PWM
+    print((arduino.readline()).decode('utf-8'))
+    time.sleep(0.4)
+    for test in range(0,10):
+        msj = '#W640$'
+        arduino.write(msj.encode('utf-8'))
+        msj = arduino.readline()
+        msj = msj.decode('utf-8')
+        DC_cal_val.append(int(msj.split(',')[4]))
+        if debug:
+            print(str(test) + ". DC test value", int(msj.split(',')[4]))
+
+
+    estimated_source_V = calculate_PCA_Voltage(np.mean(DC_cal_val))
+    if debug:
+        print('Estimated PCA source voltage:', '{0:.3g}'.format(estimated_source_V))
+        print('')
+
+
+    if use_resistance:
+        threshDCs = calculate_ADC_code(SC_upper_res, V=estimated_source_V)
+        threshDCi = calculate_RS_drop(10500, V=estimated_source_V)
+        print('Modifying existing threshold to match max SC resistance:', SC_upper_res, 'Ohms')
+        print('Lower DC thrshold:', threshDCi)
+        print('Upper DC thrshold:', threshDCs)
+        print('')
+
+
+
+
+
     ## Start AC Test
     print('AC test')
     arduino.write(('#P'+'I'+'$').encode('utf-8')) ## Turn on PWM
     print((arduino.readline()).decode('utf-8'))
-    time.sleep(1)
+    time.sleep(0.5)
 
 
     for test in range(0,10):
@@ -156,9 +211,13 @@ if portIsUsable(portName):
         arduino.write(msj.encode('utf-8'))
         msj = arduino.readline()
         msj = msj.decode('utf-8')
-        if debug:
+        AC_cal_val.append(int(msj.split(',')[4]))
+        if debug2:
             print(str(test) + ". AC test value", int(msj.split(',')[4]))
+            print('')
 
+
+    time.sleep(0.2)
     for channel in channels:
         if channel.mult >= 0:
             msj = '#W' + str(channel.mult) + str(channel.port) + str(channel.pin) + '$'
@@ -178,8 +237,10 @@ if portIsUsable(portName):
     print('DC test')
     arduino.write(('#P'+'O'+'$').encode('utf-8'))   # Turn off PWM
     print((arduino.readline()).decode('utf-8'))
-    time.sleep(1)
+    time.sleep(0.4)
 
+
+    time.sleep(0.2)
     for channel in channels:
         if channel.mult >= 0:
             msj = '#W' + str(channel.mult) + str(channel.port) + str(channel.pin)+'$'
@@ -242,6 +303,8 @@ if print_CSV:
     directory = os.getcwd()
     print("Date and Time =", fecha)
 
+    if 'Results' not in os.listdir(directory):
+        os.mkdir(directory + '\Results')
     nombre = directory + '\Results' + '\\' + save_prefix + fecha + '.xlsx'
     workbook = xlsxwriter.Workbook(nombre)
 
@@ -265,19 +328,19 @@ if print_CSV:
 
     prueba = workbook.add_worksheet('Test')
     prueba.write(0, 0, fecha)
-    prueba.write(0, 3, 'PAD NAME:')
+    prueba.write(0, 3, 'NAME:')
     prueba.write(0, 4, selected_map)
     prueba.set_column(3, 4, 10)
-    escexcell(['Mult', 'Port', 'Pin', 'ADC DC', 'Voltage DC', 'Current DC mA', 'ADC AC', 'Voltage AC', 'Current AC mA', 'Name', 'PAD_Number', 'Messages'], 2, prueba, 0, white)
+    escexcell(['Mult', 'Port', 'Pin', 'ADC DC', 'Voltage DC', 'Current DC mA', 'ADC AC', 'Voltage AC', 'GFZ_Name', 'Name', 'Map Number', 'Messages'], 2, prueba, 0, white)
     prueba.write(0, 0, fecha)
 
     errores = workbook.add_worksheet('Errors')
-    errores.write(0, 0, 'PAD NAME:')
+    errores.write(0, 0, 'NAME:')
     errores.write(0, 1, selected_map)
-    errores.write(1, 0, 'PIN NAME:')
-    errores.write(1, 1, 'GFZ NAME:')
-    escexcell(['Mult', 'Port', 'Pin'], 1, errores, 2, white)
-    escexcell(['Mult', 'Port', 'Pin'], 1, errores, 6, white)
+    #errores.write(1, 1, 'PIN NAME:')
+    errores.write(1, 0, 'GFZ NAME:')
+    escexcell(['Name', 'Map Number'], 1, errores, 3, white)
+    escexcell(['Name', 'Map Number'], 1, errores, 6, white)
 
 
     conectorDC = workbook.add_worksheet('ConnectorDC')
@@ -286,7 +349,7 @@ if print_CSV:
     conectorDC.write(0, 1, threshDCs, white)
     conectorDC.write(1, 0, 'Lower DC Threshold:', white)
     conectorDC.write(1, 1, threshDCi, white)
-    conectorDC.write(2, 0, 'PAD NAME:', white)
+    conectorDC.write(2, 0, 'NAME:', white)
     conectorDC.write(2, 1, selected_map, white)
     conectorDC.set_column(3, 12, 12)
 
@@ -297,7 +360,7 @@ if print_CSV:
     conectorAC.write(0, 1, threshACs,white)
     conectorAC.write(1, 0, 'Lower AC Threshold:', white)
     conectorAC.write(1, 1, threshACi, white)
-    conectorAC.write(2, 0, 'PAD NAME:', white)
+    conectorAC.write(2, 0, 'NAME:', white)
     conectorAC.write(2, 1, selected_map, white)
     conectorAC.set_column(3, 12, 12)
 
@@ -341,12 +404,12 @@ if print_CSV:
             conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(channel.ADC_DC), channel.DC_color_code)
             if channel.cc:
                 #Error window
-                errores.write(counter2 + 2, 0, channel.pad_map, channel.DC_color_code)
-                errores.write(counter2 + 2, 1, channel.gfz, channel.DC_color_code)
-                offset = 2
-                for error in channel.errors:
+                #errores.write(counter2 + 2, 1, channel.pad_map, channel.DC_color_code)
+                errores.write(counter2 + 2, 0, channel.gfz, channel.DC_color_code)
+                offset = 3
+                for error in correlated_pins(channels, channel.errors):
                     escexcell(error, counter2 + 2, errores, offset, channel.color_code)
-                    offset += 4
+                    offset += 3
                 counter2 += 1
 
 
@@ -356,4 +419,6 @@ if print_CSV:
 
 
     workbook.close()
+
+
 
