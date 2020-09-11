@@ -48,6 +48,7 @@ class channel():
         self.currentAC = 0
         self.voltageDC = 0
         self.voltageAC = 0
+        self.short_resistance = 0
 
 
 
@@ -70,6 +71,11 @@ class channel():
         self.summary = [self.multiplexer, self.port, self.pin, self.ADC_DC, format_str.format(self.voltageDC), format_str.format(self.currentDC), self.ADC_AC, format_str.format(self.voltageAC), self.gfz, self.name, self.pad_map]
         for i in self.messages:
             self.summary.append(i)
+
+
+
+    def calculate_short_res(self, V):
+        self.short_resistance = calculate_equivalent_resistance(self.ADC_DC, V)
 
 
     def mult_list(self):
@@ -137,7 +143,7 @@ def grounds(list):
             ch.port = new.port
             ch.pin = new.pin
             ch.multiplexer = new.multiplexer
-            ch.mult = new.mult
+            #ch.mult = new.mult
 
             ch.currentDC = new.currentDC
             ch.currentAC = new.currentAC
@@ -233,10 +239,11 @@ def calculate_equivalent_resistance(ADC_code, V, Rp=9530, Rs=470, ADC_ref=1.1):
     I = V_ADC / Rs
     Req =  V / I
 
-    Rc = (2*Req*Rp - Rp*Rp - 2*Rs*Rp) / (Rp + Rs - Req)
+    if Req < (Rp+Rs):
+        Rc = (2*Req*Rp - Rp*Rp - 2*Rs*Rp) / (Rp + Rs - Req)
+    else:
+        Rc = 2731515
 
-    if Rc < 0:
-        Rc = 10000000000000
     return int(Rc)
 
 def correlated_pins(chns, errors):
@@ -251,4 +258,11 @@ def correlated_pins(chns, errors):
 
 
 if __name__ == "__main__":
-    pass
+    import pandas as pd
+    results_df = pd.DataFrame(columns=['1', '2'])
+    for i in range(20):
+        results_df.loc[str(i), '1'] = i
+
+        pass
+
+    print(results_df)

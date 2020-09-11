@@ -8,8 +8,9 @@ import sys
 import pandas as pd
 from easygui import choicebox, ccbox
 import numpy as np
+import matplotlib.pyplot as plt
 
-from files.functions import channel, mensaje, check, grounds, serial_ports, portIsUsable, escexcell, calculate_PCA_Voltage, calculate_ADC_code, calculate_RS_drop, correlated_pins
+from files.functions import channel, mensaje, check, grounds, serial_ports, portIsUsable, escexcell, calculate_PCA_Voltage, calculate_ADC_code, calculate_RS_drop, correlated_pins, calculate_equivalent_resistance
 
 
 
@@ -110,7 +111,9 @@ with open('files/Maping.csv') as csv_file:
 
 
 
-
+if debug:
+    print('')
+    print('GFZ to', selected_map,'Mapping')
 for channel in channels:
     name = df.loc[channel.gfz, selected_map]
     if name == not_in_map_str:
@@ -145,14 +148,17 @@ estimated_source_V = 0
 if portIsUsable(portName):
     print_CSV = True
     arduino = serial.Serial(portName, bps)
+    print('')
     print('Arduino on port:', arduino.name)
 
     if debug:
         print('DEBUG MODE ON')
 
+    if debug:
+        print('')
+        print('Checking multiplexers')
     arduino.timeout = 5
     time.sleep(2)
-
     ##Start comunication
     arduino.write('#'.encode('utf-8'))
     cond = True
@@ -161,7 +167,8 @@ if portIsUsable(portName):
         if len(msj) > 0:
             if mensaje(msj) == 1:
                 cond = False
-            print(msj.decode('utf-8'))
+            if debug:
+                print(msj.decode('utf-8'))
 
 
 
@@ -183,7 +190,7 @@ if portIsUsable(portName):
 
     estimated_source_V = calculate_PCA_Voltage(np.mean(DC_cal_val))
     if debug:
-        print('Estimated PCA source voltage:', '{0:.3g}'.format(estimated_source_V))
+        print('Estimated PCA source voltage:', '{0:.3g}'.format(estimated_source_V) + 'V')
         print('')
 
 
@@ -234,6 +241,7 @@ if portIsUsable(portName):
 
 
     # Start DC Test
+    print('\n\n')
     print('DC test')
     arduino.write(('#P'+'O'+'$').encode('utf-8'))   # Turn off PWM
     print((arduino.readline()).decode('utf-8'))
@@ -254,6 +262,8 @@ if portIsUsable(portName):
                 print(channel.info+': '+str(channel.ADC_DC))
             elif channel.pad_map != not_in_map_str:
                 print(channel.pad_map + ': ' + str(channel.ADC_DC))
+
+            channel.calculate_short_res(estimated_source_V)
 
 
 
@@ -301,6 +311,7 @@ if print_CSV:
     # Excel setup
     fecha = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
     directory = os.getcwd()
+    print('')
     print("Date and Time =", fecha)
 
     if 'Results' not in os.listdir(directory):
@@ -388,37 +399,62 @@ if print_CSV:
 
     counter1 = 1
     counter2 = 1
+    results_df = pd.DataFrame(columns=['pad_map', 'gfz', 'ADC_DC', 'voltageDC', 'SCR','ADC_AC', 'voltageAC'])
     for channel in channels:
-        if True:
-            channel.update_VI()
-            channel.update()
+        channel.update_VI()
+        channel.update()
+
+        if channel.mult >= 0:
+            results_df.loc[channel.gfz, 'pad_map'] = channel.pad_map
+            results_df.loc[channel.gfz, 'gfz'] = channel.gfz
+            results_df.loc[channel.gfz, 'ADC_DC'] = channel.ADC_DC
+            results_df.loc[channel.gfz, 'voltageDC'] = channel.voltageDC
+            results_df.loc[channel.gfz, 'ADC_AC'] = channel.ADC_AC
+            results_df.loc[channel.gfz, 'voltageAC'] = channel.voltageAC
+            results_df.loc[channel.gfz, 'SCR'] = channel.short_resistance
 
 
-            # AC window
-            conectorAC.write(channel.x + 2, channel.y + 2, channel.pad_map+': '+str(channel.ADC_AC), channel.AC_color_code)
+        # AC window
+        conectorAC.write(channel.x + 2, channel.y + 2, channel.pad_map+': '+str(channel.ADC_AC), channel.AC_color_code)
 
-            # Test window
-            escexcell(channel.summary, counter1 + 2, prueba, 0, channel.color_code)
+        # Test window
+        escexcell(channel.summary, counter1 + 2, prueba, 0, channel.color_code)
 
-            # DC window
-            conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(channel.ADC_DC), channel.DC_color_code)
-            if channel.cc:
-                #Error window
-                #errores.write(counter2 + 2, 1, channel.pad_map, channel.DC_color_code)
-                errores.write(counter2 + 2, 0, channel.gfz, channel.DC_color_code)
-                offset = 3
-                for error in correlated_pins(channels, channel.errors):
-                    escexcell(error, counter2 + 2, errores, offset, channel.color_code)
-                    offset += 3
-                counter2 += 1
+        # DC window
+        conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(channel.ADC_DC), channel.DC_color_code)
+        if channel.cc:
+            #Error window
+            #errores.write(counter2 + 2, 1, channel.pad_map, channel.DC_color_code)
+            errores.write(counter2 + 2, 0, channel.gfz, channel.DC_color_code)
+            offset = 3
+            for error in correlated_pins(channels, channel.errors):
+                escexcell(error, counter2 + 2, errores, offset, channel.color_code)
+                offset += 3
+            counter2 += 1
 
 
-            counter1 += 1
+        counter1 += 1
+
+
 
 
 
 
     workbook.close()
+
+
+    if debug:
+        pd.set_option('display.max_rows', 500)
+        print('')
+        print(results_df)
+        plt.scatter(results_df.SCR, results_df.ADC_AC)
+        plt.show()
+
+
+
+
+
+
 
 
 
