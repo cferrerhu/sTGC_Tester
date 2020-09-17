@@ -8,7 +8,7 @@ import sys
 import pandas as pd
 from easygui import choicebox, ccbox
 import numpy as np
-import matplotlib.pyplot as plt
+
 
 from files.functions import channel, mensaje, check, grounds, serial_ports, portIsUsable, escexcell, calculate_PCA_Voltage, calculate_ADC_code, calculate_RS_drop, correlated_pins, calculate_equivalent_resistance
 
@@ -443,12 +443,12 @@ if print_CSV:
     workbook.close()
 
 
-    if debug:
-        pd.set_option('display.max_rows', 500)
-        print('')
-        print(results_df)
-        plt.scatter(results_df.SCR, results_df.ADC_AC)
-        plt.show()
+    # if debug:
+    #     pd.set_option('display.max_rows', 500)
+    #     print('')
+    #     print(results_df)
+    #     plt.scatter(results_df.SCR, results_df.ADC_AC)
+    #     plt.show()
 
 
 
