@@ -41,7 +41,7 @@ bool debug = false; //Mostrar menos
 void setup() {
   
   Wire.begin();
-  Serial.begin(57200);
+  Serial.begin(57600);
   pinSetup();
   InitADC();
   //IntSetup();
