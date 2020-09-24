@@ -16,35 +16,33 @@ from files.functions import channel, mensaje, check, grounds, serial_ports, port
 
 #############################################################################
 ##########################-OPTIONS-##########################################
-#Debug
+#Debug flag, prints more info on the terminal
 debug = False
 
-#Minimum short circuit resistance, only needed if use_resistance=True
-SC_upper_res = 100000
-use_resistance = False
+# Minimum short circuit resistance, only needed if use_resistance=True
+SC_upper_res = 100000 # value in Ohms
+use_resistance = False # Flag for using resistance based thresholds
 
-#Thresholds
+# DC Non resistance based Thresholds, only needed if use_resistance=False
 threshDCs = 220
 threshDCi = 190
 
+# AC thresholds, always needed
 threshACs = 400
 threshACi = 80
 
 #Serial Communication
-portName = ''
-bps = 57600
-
-#Print info to CSV
-print_CSV = False
+portName = '' # Port name not specified (Ej. 'COM2') starts the port GUI
+bps = 57600 # Serial Baudrate
 
 
 
+
+#############################################################################
+##########################-SCRIPT-##########################################
 #Advanced options
 debug2 = False
 adc_voltage_ref = 1.1
-
-
-
 
 ## Load PAD information and mapping
 padStrip_choices = ["P1 Strip", "P2 Strip", "Pad"]
@@ -134,13 +132,16 @@ AC_cal_val = []
 DC_cal_val = []
 estimated_source_V = 0
 
+#Print info to CSV
+print_CSV = False
+
 ## Commands [Start,ID,Letter,Port,Number,Comand,Stop]
 ##Send
 ## [#,S,0,0,0,$] Start
 ## [#,W,2,0,1,$] Write Mult A Port 0 and Pin 1 a signal of 5V, read current and send it back
 ## [#,E,0,0,0,$] Read errors and send them back
-## [#,P,I,0,0,$] Turn PWM ON
-## [#,P,O,0,0,$] Turn PWM OFF
+## [#,P,I,0,0,$] Change to AC mode
+## [#,P,O,0,0,$] Change to DC mode
 
 ##Recive
 ## Turn on PWM
@@ -150,16 +151,15 @@ if portIsUsable(portName):
     arduino = serial.Serial(portName, bps)
     print('')
     print('Arduino on port:', arduino.name)
+    arduino.timeout = 5
 
     if debug:
         print('DEBUG MODE ON')
-
-    if debug:
         print('')
         print('Checking multiplexers')
-    arduino.timeout = 5
+
     time.sleep(2)
-    ##Start comunication
+    #Check multiplexers status
     arduino.write('#'.encode('utf-8'))
     cond = True
     while cond:
@@ -171,14 +171,13 @@ if portIsUsable(portName):
                 print(msj.decode('utf-8'))
 
 
+    # Voltage sensing Test, uses the test pins to probe the supplied voltage from the PC
 
-    # Start Voltage sensing Test
-    if debug:
-        print('Measuring PCA voltage')
+    print('Measuring voltage for calibration')
     arduino.write(('#P'+'O'+'$').encode('utf-8'))   # Turn off PWM
     print((arduino.readline()).decode('utf-8'))
     time.sleep(0.4)
-    for test in range(0,10):
+    for test in range(0, 10):
         msj = '#W640$'
         arduino.write(msj.encode('utf-8'))
         msj = arduino.readline()
@@ -187,13 +186,13 @@ if portIsUsable(portName):
         if debug:
             print(str(test) + ". DC test value", int(msj.split(',')[4]))
 
-
+    # Calculate estimated supplied voltage based on ADC readings
     estimated_source_V = calculate_PCA_Voltage(np.mean(DC_cal_val))
     if debug:
         print('Estimated PCA source voltage:', '{0:.3g}'.format(estimated_source_V) + 'V')
         print('')
 
-
+    # If use_resistance=True, calculates ADC code thresholds based on supply voltage and expected resistance
     if use_resistance:
         threshDCs = calculate_ADC_code(SC_upper_res, V=estimated_source_V)
         threshDCi = calculate_RS_drop(10500, V=estimated_source_V)
@@ -223,7 +222,7 @@ if portIsUsable(portName):
             print(str(test) + ". AC test value", int(msj.split(',')[4]))
             print('')
 
-
+    # Start probing each channel for the AC test
     time.sleep(0.2)
     for channel in channels:
         if channel.mult >= 0:
@@ -247,7 +246,7 @@ if portIsUsable(portName):
     print((arduino.readline()).decode('utf-8'))
     time.sleep(0.4)
 
-
+    # Start probing each channel for the DC test
     time.sleep(0.2)
     for channel in channels:
         if channel.mult >= 0:
@@ -267,9 +266,11 @@ if portIsUsable(portName):
 
 
 
-
+    # Process AC and DC results, based on that probe the shorted channels looking for Short circuits
     for channel in channels:
         if channel.mult >= 0:
+
+            # AC logic
             if channel.ADC_AC > threshACs:
                 channel.messages.append('Error in AC current (to High)')
             elif channel.ADC_AC > threshACi:
@@ -277,7 +278,7 @@ if portIsUsable(portName):
             else:
                 channel.messages.append('Error in AC current (to Low)')
 
-
+            # DC logic
             if channel.ADC_DC > threshDCs:
                 channel.cc = True
                 msj = '#E' + str(channel.mult) + str(channel.port) + str(channel.pin) + '$'
@@ -300,11 +301,13 @@ if portIsUsable(portName):
 
             elif channel.ADC_DC < threshDCi:
                 channel.messages.append('Error in DC current (to Low)')
+
     arduino.close()
 
 else:
     print("Couldn't open COM port, aborting...")
 
+# Write information to CSV file
 if print_CSV:
     grounds(channels)
 
@@ -314,10 +317,12 @@ if print_CSV:
     print('')
     print("Date and Time =", fecha)
 
+
     if 'Results' not in os.listdir(directory):
         os.mkdir(directory + '\Results')
     nombre = directory + '\Results' + '\\' + save_prefix + fecha + '.xlsx'
     workbook = xlsxwriter.Workbook(nombre)
+    print('Saving as:', nombre)
 
     bueno = workbook.add_format()
     bueno.set_bg_color('green')
@@ -349,9 +354,9 @@ if print_CSV:
     errores.write(0, 0, 'NAME:')
     errores.write(0, 1, selected_map)
     #errores.write(1, 1, 'PIN NAME:')
-    errores.write(1, 0, 'GFZ NAME:')
-    escexcell(['Name', 'Map Number'], 1, errores, 3, white)
-    escexcell(['Name', 'Map Number'], 1, errores, 6, white)
+    errores.write(2, 0, 'Detected in GFZ pin:')
+    escexcell(['Name', 'Map Number'], 2, errores, 3, white)
+    escexcell(['Name', 'Map Number'], 2, errores, 6, white)
 
 
     conectorDC = workbook.add_worksheet('ConnectorDC')
@@ -442,13 +447,6 @@ if print_CSV:
 
     workbook.close()
 
-
-    # if debug:
-    #     pd.set_option('display.max_rows', 500)
-    #     print('')
-    #     print(results_df)
-    #     plt.scatter(results_df.SCR, results_df.ADC_AC)
-    #     plt.show()
 
 
 
