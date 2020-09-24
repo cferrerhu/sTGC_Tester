@@ -1,13 +1,11 @@
 import serial
-#from libreria import separar, portIsUsable
 import sys
 import glob
 
 class channel():
-
+    # Channel object, contains all the mappings and stores test results results
     def __init__(self, info, ADC_ref=1.1, reversed_x=True):
         self.multiplexer = info[0]
-
         if info[0]=='A':
             self.mult = 0
         elif info[0]=='B':
@@ -40,7 +38,6 @@ class channel():
         self.name = info[6]
 
 
-        self.resistance = 470
         self.ADC_REF = ADC_ref
         self.ADC_DC = 0
         self.ADC_AC = 0
@@ -49,8 +46,6 @@ class channel():
         self.voltageDC = 0
         self.voltageAC = 0
         self.short_resistance = 0
-
-
 
         self.responseDC = ""
         self.responseAC = ""
@@ -73,7 +68,6 @@ class channel():
             self.summary.append(i)
 
 
-
     def calculate_short_res(self, V):
         self.short_resistance = calculate_equivalent_resistance(self.ADC_DC, V)
 
@@ -82,14 +76,10 @@ class channel():
         return [self.multiplexer, str(self.port), str(self.pin)]
 
 
-
-
     def update_VI(self):
         self.voltageDC = self.ADC_DC * self.ADC_REF / 1024
         self.voltageAC = self.ADC_AC * self.ADC_REF / 1024
 
-        self.currentDC = (self.voltageDC / self.resistance) * 1000
-        self.currentAC = (self.voltageAC / self.resistance) * 1000
 
 
 def mensaje(msj,deb=False):
