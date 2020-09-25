@@ -272,11 +272,11 @@ if portIsUsable(portName):
 
             # AC logic
             if channel.ADC_AC > threshACs:
-                channel.messages.append('Error in AC current (to High)')
+                channel.messages.append('Error in AC current (too High)')
             elif channel.ADC_AC > threshACi:
                 channel.connection = True
             else:
-                channel.messages.append('Error in AC current (to Low)')
+                channel.messages.append('Error in AC current (too Low)')
 
             # DC logic
             if channel.ADC_DC > threshDCs:
@@ -297,10 +297,10 @@ if portIsUsable(portName):
                     if debug:
                         print(msj)
 
-                channel.messages.append('Error in DC current (to High)')
+                channel.messages.append('Error in DC current (too High)')
 
             elif channel.ADC_DC < threshDCi:
-                channel.messages.append('Error in DC current (to Low)')
+                channel.messages.append('Error in DC current (too Low)')
 
     arduino.close()
 
@@ -426,7 +426,10 @@ if print_CSV:
         escexcell(channel.summary, counter1 + 2, prueba, 0, channel.color_code)
 
         # DC window
-        conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(channel.ADC_DC), channel.DC_color_code)
+        if use_resistance:
+            conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(int(channel.short_resistance/1000)) + 'k', channel.DC_color_code)
+        else:
+            conectorDC.write(channel.x + 2, channel.y + 2, channel.pad_map + ': ' + str(channel.ADC_DC), channel.DC_color_code)
         if channel.cc:
             #Error window
             #errores.write(counter2 + 2, 1, channel.pad_map, channel.DC_color_code)
