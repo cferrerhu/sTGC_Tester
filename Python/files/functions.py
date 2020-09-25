@@ -4,7 +4,7 @@ import glob
 
 class channel():
     # Channel object, contains all the mappings and stores test results results
-    def __init__(self, info, ADC_ref=1.1, reversed_x=True):
+    def __init__(self, info, ADC_ref=1.1, reversed_x=True, Rsense=470):
         self.multiplexer = info[0]
         if info[0]=='A':
             self.mult = 0
@@ -39,6 +39,7 @@ class channel():
 
 
         self.ADC_REF = ADC_ref
+        self.sensing_res = Rsense
         self.ADC_DC = 0
         self.ADC_AC = 0
         self.currentDC = 0
@@ -79,6 +80,7 @@ class channel():
     def update_VI(self):
         self.voltageDC = self.ADC_DC * self.ADC_REF / 1024
         self.voltageAC = self.ADC_AC * self.ADC_REF / 1024
+        self.currentDC = (self.voltageDC/470)*1000
 
 
 
