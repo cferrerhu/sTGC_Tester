@@ -2,8 +2,18 @@ import serial
 #from libreria import separar, portIsUsable
 import sys
 import glob
+import math
 
-class channel():
+# necessary for window class
+import os
+from tkinter import *
+import subprocess
+import time
+import datetime
+from tkinter import messagebox
+from PIL import Image
+
+class Channel():
 
     def __init__(self, info, ADC_ref=1.1, reversed_x=True):
         self.multiplexer = info[0]
@@ -30,6 +40,8 @@ class channel():
         self.pin = info[2]
 
         self.gfz = info[3]
+        self.gfzchannel = Pin2GFZChannel(info[3])
+
 
         self.x = int(info[4])
         if reversed_x:
@@ -64,6 +76,8 @@ class channel():
         self.summary = []
         self.messages = []
         self.pad_map = 'NA'
+        self.PARposition = 'NA'
+        self.position = 'NA'
 
 
     def update(self):
@@ -133,7 +147,7 @@ def check(msj1,msj2,debug=False):
         print('Communication error')
 
 def grounds(list):
-    new = channel(['G', '2', '0', 'G0', '4', '6', 'GND'])
+#    new = Channel(['G', '2', '0', 'G0', '4', '6', 'GND'])
     for ch in list:
         if ch.gfz == 'G0':
             ch.pad_map = 'GND'
@@ -266,3 +280,194 @@ if __name__ == "__main__":
         pass
 
     print(results_df)
+
+
+def Pin2GFZChannel(pin):
+    chan = 999
+    letter = pin[:1]
+    n = pin[1:len(pin)]
+    num = int(n)
+
+    if letter == "i":
+        chan = 255 - num
+   
+    elif letter == "j":
+        chan = 127 - num 
+
+    return chan
+
+
+
+STRIPPITCH=3.2
+
+def NumberToPosition(WEDGEANGLE, AB, objectNumber):
+    position = -999
+    if "S" in AB:
+        position=(int(objectNumber)-9)*(STRIPPITCH/math.cos(WEDGEANGLE))+1.685
+    return position
+
+def NumberToPosition_QL3Par(AB, objectNumber):
+    position = -999
+    if "S" in AB:
+        position=(352-int(objectNumber)-9)*(STRIPPITCH)+1.685
+    return position
+
+# Window class for unified GUI
+class Window2:
+    # Initialize window
+    def __init__(self, master):
+        # create main frame object
+        self.frame2 = Frame(master)
+
+        # Window title
+        self.frame2.winfo_toplevel().title("Shorts test")
+
+        # radiobutton list to choose sTGC Type
+        STGCdef = StringVar()
+        UNIQUEdef = StringVar()
+        LAYERdef = StringVar()
+        ABdef = StringVar()
+        GFZdef = StringVar()
+        PCdef = StringVar()
+
+        # Set default values for the GUI window
+        STGCdef.set("QS3")
+        UNIQUEdef.set("wedge1")
+        LAYERdef.set("2")
+        ABdef.set("S")
+        GFZdef.set("P1")
+        PCdef.set("P")
+
+        stgcframe = Frame(padx=50, pady=10)
+        stgclabel = Label(stgcframe, text='sTGC Type:', width=25)
+        stgclabel.pack(side=LEFT)
+        QS1 = Radiobutton(stgcframe, text='QS1', variable=STGCdef, value='QS1')
+        QS2 = Radiobutton(stgcframe, text='QS2', variable=STGCdef, value='QS2')
+        QS3 = Radiobutton(stgcframe, text='QS3', variable=STGCdef, value='QS3')
+        QL1 = Radiobutton(stgcframe, text='QL1', variable=STGCdef, value='QL1')
+        QL2 = Radiobutton(stgcframe, text='QL2', variable=STGCdef, value='QL2')
+        QL3 = Radiobutton(stgcframe, text='QL3', variable=STGCdef, value='QL3')
+        self.stgc = STGCdef
+
+        QL3.pack(side=RIGHT)
+        QL2.pack(side=RIGHT)
+        QL1.pack(side=RIGHT)
+        QS3.pack(side=RIGHT)
+        QS2.pack(side=RIGHT)
+        QS1.pack(side=RIGHT)
+
+        stgcframe.pack()
+
+        # Pivot or confirm
+        PCframe = Frame(padx=50, pady=10)
+        PCframe.pack()
+        PClabel = Label(PCframe, text='Pivot or Confirm: ', width=25)
+        PClabel.pack(side=LEFT)
+        Pivot = Radiobutton(PCframe, text='Pivot', variable=PCdef, value='P')
+        Confirm = Radiobutton(PCframe, text='Confirm', variable=PCdef, value='C')
+        self.PC = PCdef
+        Confirm.pack(side=RIGHT)
+        Pivot.pack(side=RIGHT)
+
+        # Unique Identifier
+        uniqueframe = Frame(padx=50, pady=10)
+        uniqueframe.pack()
+        uniquelabel = Label(uniqueframe, text='Unique Identifier:', width=25)
+        uniquelabel.pack(side=LEFT)
+        self.unique = Entry(uniqueframe, width=25, textvariable=UNIQUEdef)
+        self.unique.pack(side=RIGHT)
+
+        # Layer Number
+        layerframe = Frame(padx=50, pady=10)
+        layerframe.pack()
+        layerlabel = Label(layerframe, text='Layer Number:', width=25)
+        layerlabel.pack(side=LEFT)
+        One = Radiobutton(layerframe, text='1', variable=LAYERdef, value='1')
+        Two = Radiobutton(layerframe, text='2', variable=LAYERdef, value='2')
+        Three = Radiobutton(layerframe, text='3', variable=LAYERdef, value='3')
+        Four = Radiobutton(layerframe, text='4', variable=LAYERdef, value='4')
+        #self.layer = Entry(layerframe, width=25, textvariable=LAYERdef)
+        self.layer = LAYERdef 
+        #self.layer.pack(side=RIGHT)
+        Four.pack(side=RIGHT)
+        Three.pack(side=RIGHT)
+        Two.pack(side=RIGHT)
+        One.pack(side=RIGHT)
+
+        # Adapter board
+        ABframe = Frame(padx=50, pady=10)
+        ABframe.pack()
+        #ABlabel = Label(ABframe, text='Adapter Board: [S,P]', width=25)
+        ABlabel = Label(ABframe, text='Adapter Board:', width=25)
+        ABlabel.pack(side=LEFT)
+        Strip = Radiobutton(ABframe, text='Strip', variable=ABdef, value='S')
+        Pad = Radiobutton(ABframe, text='Pad', variable=ABdef, value='P')
+        #self.AB = Entry(ABframe, width=25, textvariable=ABdef)
+        self.AB = ABdef
+        Pad.pack(side=RIGHT)
+        Strip.pack(side=RIGHT)
+
+        # Gfz number
+        gfzframe = Frame(padx=50, pady=10)
+        gfzframe.pack()
+        #gfzlabel = Label(gfzframe, text='GFZ Number: [P1,P2]', width=25)
+        gfzlabel = Label(gfzframe, text='GFZ Number:', width=25)
+        gfzlabel.pack(side=LEFT)
+        P1 = Radiobutton(gfzframe, text='P1', variable=GFZdef, value='P1')
+        P2 = Radiobutton(gfzframe, text='P2', variable=GFZdef, value='P2')
+        #self.gfz = Entry(gfzframe, width=25, textvariable=GFZdef)
+        self.gfz = GFZdef
+        P2.pack(side=RIGHT)
+        P1.pack(side=RIGHT)
+        
+        # Read and run button
+        readframe = Frame(padx=50, pady=10)
+        readframe.pack()
+        readlabel = Label(readframe, text='Read and run the sTGC Shorts Test:', width=30)
+        readlabel.pack(side=LEFT)
+        self.read = Button(readframe, text="RUN", command=self.Read)
+        self.read.pack(side=RIGHT)
+
+        self.frame2.pack()
+
+# Function for the button used to finally run the test
+    def Read(self):
+        # do it only once
+        self.stgcval = str(self.stgc.get()).upper()
+        self.uniqueval = str(self.unique.get()).upper()
+        self.layerval = str(self.layer.get()).upper()
+        self.ABval = str(self.AB.get()).upper()
+        self.gfzval = str(self.gfz.get()).upper()
+        self.PCval = str(self.PC.get()).upper()
+#        if self.PCval[0] == 'P':
+#            positioning = 'PIVOT'
+#        elif self.PCval[0] == 'C':
+#            positioning = 'CONFIRM'
+#        else:
+#            positioning = self.PCval
+
+        # continue process
+        self.frame2.quit()
+
+
+#    def ResetUSB(self):
+#        n=0
+#        unbind = ['sudo', 'echo', '/sys/bus/usb/drivers/usb/1-5', '>', 'unbind']
+#        wait = ['sleep', '3']
+#        bind = ['sudo', 'echo', '/sys/bus/usb/drivers/usb/1-5', '>', 'bind']
+#        try:            
+#            subprocess.check_call(unbind)         
+#            subprocess.check_call(wait)         
+#            subprocess.check_call(bind)         
+#        except:
+#            n=1
+#        if n==0:
+#            print("reset usb successful")
+#        elif n==1:
+#            print("reset usb FAILED")
+
+    def getSelected_map(self):
+        return self.stgcval + "_" + self.PCval + "_" + self.uniqueval + "_LAYER" + self.layerval
+
+    def getSelected_board(self):
+        return self.ABval + "_" + self.gfzval
